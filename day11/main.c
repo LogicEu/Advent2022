@@ -65,10 +65,10 @@ static char* file_read(const char* filename)
 
 #define ARRLEN 0xfff
 #define STRLEN 0xff
-#define MONSIZE 4
+#define MONSIZE 8
 
 typedef struct monkey_t {
-    mpz_t arr[0xff];
+    unsigned long arr[0xff];
     unsigned long arrcount;
     unsigned long mod;
     const char* op;
@@ -76,13 +76,7 @@ typedef struct monkey_t {
     unsigned long mfalse;
 } monkey_t;
 
-static void getmpz(const char* s, mpz_t mp)
-{
-    mpz_init(mp);
-    mpz_set_str(mp, s, 10);
-}
-
-static unsigned long getarr(const char* str, mpz_t* arr)
+static unsigned long getarr(const char* str, unsigned long* arr)
 {
     unsigned long count = 0;
     char* c = strchr(str, ':') + 2, *s;
@@ -90,12 +84,14 @@ static unsigned long getarr(const char* str, mpz_t* arr)
     c = strchr(c, ',');
     while (c) {
         *c = 0;
-        getmpz(s, arr[count++]);
+        arr[count] = atol(s);
+        ++count;
         *c = ',';
         s = c + 2;
         c = strchr(s, ',');
     }
-    getmpz(s, arr[count++]);
+    arr[count] = atol(s);
+    ++count;
     return count;
 }
 
@@ -117,11 +113,6 @@ static inline unsigned long getbool(const char* str)
     return atol(strstr(str, monkeystr) + sizeof(monkeystr));
 }
 
-static void printmpz(const mpz_t n)
-{
-    mpz_out_str(stdout, 10, n);
-}
-
 static void printmonkeys(const monkey_t* monkeys, const int monkeysize)
 {
     unsigned long m, i;
@@ -131,7 +122,7 @@ static void printmonkeys(const monkey_t* monkeys, const int monkeysize)
             if (i) {
                 printf(", ");
             }
-            printmpz(monkeys[m].arr[i]);
+            printf("%lu\n", monkeys[m].arr[i]);
         }
         printf("\n");
     }
@@ -148,67 +139,22 @@ static void printtimes(const unsigned long* times, const unsigned long size,
     printf("\n");
 }
 
-static void doop(const char* op, mpz_t n)
+static unsigned long doop(const char* op, const unsigned long n)
 {
     char c, num[16];
     sscanf(op, "%c %s", &c, num);
-    //printf("Op: ");
-    if (isdigit(num[0])) {
-        unsigned long m = atoi(num);
-        switch (c) {
-            case '+':
-                //printmpz(n);
-                mpz_add_ui(n, n, m);
-                //printmpz(n);
-                break;
-            case '*':
-                //printmpz(n);
-                mpz_mul_ui(n, n, m);
-                //printmpz(n);
-                break;
-            default:
-                printf("Failed Op: %c\n", c);
-        }
-        //printf("\n");
-        return;
-    }
-
+    unsigned long m = isdigit(num[0]) ? atol(num) : n;
     switch (c) {
-        case '+':
-            //printmpz(n);
-            mpz_add(n, n, n);
-            //printmpz(n);
-            break;
-        case '*':
-            //printmpz(n);
-            mpz_mul(n, n, n);
-            //printmpz(n);
-            break;
-        default:
-            printf("Failed Op 2: %c\n", c);
-    }
-    //printf("\n");
-}
-
-static void monkeyclear(monkey_t* monkeys, const unsigned long size)
-{
-    unsigned long i, j;
-    for (i = 0; i < size; ++i) {
-        for (j = 0; j < monkeys[i].arrcount; ++j) {
-            mpz_clear(monkeys[i].arr[j]);
-        }
+        case '+': return n + m;
+        case '*': return n * m;
+        default: return printf("Failed Op: %c\n", c);
     }
 }
 
 static unsigned long puzzle(const char strs[ARRLEN][STRLEN], const unsigned long size)
 {
     monkey_t monkeys[MONSIZE];
-    unsigned long i = 1, n, m, k, times[MONSIZE] = {0};
-    
-    mpz_t mp, mp2;
-    mpz_init(mp);
-    mpz_init(mp2);
-
+    unsigned long i = 1, n, m, x, k, times[MONSIZE] = {0};
     for (m = 0; m < MONSIZE; ++m) {
         monkeys[m].arrcount = getarr(strs[i++], monkeys[m].arr);
         monkeys[m].op = getop(strs[i++]);
@@ -221,28 +167,14 @@ static unsigned long puzzle(const char strs[ARRLEN][STRLEN], const unsigned long
     for (n = 0; n < 20; ++n) {
         for (m = 0; m < MONSIZE; ++m) {
             for (i = 0; i < monkeys[m].arrcount; ++i) {
-                mpz_set(mp, monkeys[m].arr[i]);
-                mpz_clear(monkeys[m].arr[i]);
-                doop(monkeys[m].op, mp);
-                mpz_div_ui(mp, mp, 3);
-                mpz_set(mp2, mp);
-                mpz_mod_ui(mp, mp, monkeys[m].mod);
-                k = mpz_get_ui(mp);
-                k = k ? monkeys[m].mfalse : monkeys[m].mtrue;
-                mpz_init(monkeys[k].arr[monkeys[k].arrcount]);
-                mpz_set(monkeys[k].arr[monkeys[k].arrcount++], mp2);
+                x = doop(monkeys[m].op, monkeys[m].arr[i]) / 3;
+                k = x % monkeys[m].mod ? monkeys[m].mfalse : monkeys[m].mtrue;
+                monkeys[k].arr[monkeys[k].arrcount++] = x;
             }
             times[m] += monkeys[m].arrcount;
             monkeys[m].arrcount = 0;
         }
-        if (n == 0) {
-            printmonkeys(monkeys, MONSIZE);
-        }
     }
-
-    mpz_clear(mp);
-    mpz_clear(mp2);
-    monkeyclear(monkeys, MONSIZE);
 
     sort(times, MONSIZE, ulong);
     return times[0] * times[1];
@@ -251,48 +183,33 @@ static unsigned long puzzle(const char strs[ARRLEN][STRLEN], const unsigned long
 static unsigned long puzzle2(const char strs[ARRLEN][STRLEN], const unsigned long size)
 {
     monkey_t monkeys[MONSIZE];
-    unsigned long i = 1, n, m, k, times[MONSIZE] = {0};
-    
-    mpz_t mp, mp2;
-    mpz_init(mp);
-    mpz_init(mp2);
-
+    unsigned long i = 1, n, m, x, k, bigmod = 1, times[MONSIZE] = {0};
     for (m = 0; m < MONSIZE; ++m) {
         monkeys[m].arrcount = getarr(strs[i++], monkeys[m].arr);
         monkeys[m].op = getop(strs[i++]);
         monkeys[m].mod = getmod(strs[i++]);
         monkeys[m].mtrue = getbool(strs[i++]);
         monkeys[m].mfalse = getbool(strs[i++]);
+        bigmod *= monkeys[m].mod;
         i += 2;
     }
 
     for (n = 0; n < 10000; ++n) {
-        printf("%ld\n", n);
         for (m = 0; m < MONSIZE; ++m) {
             for (i = 0; i < monkeys[m].arrcount; ++i) {
-                mpz_set(mp, monkeys[m].arr[i]);
-                mpz_clear(monkeys[m].arr[i]);
-                doop(monkeys[m].op, mp);
-                mpz_set(mp2, mp);
-                mpz_mod_ui(mp, mp, monkeys[m].mod);
-                k = mpz_get_ui(mp);
-                k = k ? monkeys[m].mfalse : monkeys[m].mtrue;
-                mpz_init(monkeys[k].arr[monkeys[k].arrcount]);
-                mpz_set(monkeys[k].arr[monkeys[k].arrcount++], mp2);
+                x = doop(monkeys[m].op, monkeys[m].arr[i]) % bigmod;
+                k = x % monkeys[m].mod ? monkeys[m].mfalse : monkeys[m].mtrue;
+                monkeys[k].arr[monkeys[k].arrcount++] = x;
             }
             times[m] += monkeys[m].arrcount;
             monkeys[m].arrcount = 0;
         }
-        if (n == 0 || n == 19 || n == 999 || n == 1999) {
+        /*if (n == 0 || n == 19 || n == 999 || n == 1999) {
             printmonkeys(monkeys, MONSIZE);
             printtimes(times, MONSIZE, n + 1);
-        }
+        }*/
     }
 
-    mpz_clear(mp);
-    mpz_clear(mp2);
-    monkeyclear(monkeys, MONSIZE);
-    
     sort(times, MONSIZE, ulong);
     return times[0] * times[1];
 }
